@@ -46,3 +46,40 @@ jobs:
             app/build/reports/
             app/build/test-results/
           if-no-files-found: warn
+
+  emulator-smoke:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/download-artifact@v5
+        with:
+          name: EKO-Home-debug-${{ github.sha }}
+          path: smoke-apk
+      - name: Enable KVM for emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Android 11 runtime smoke (generic emulator, not EKO hardware)
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: |
+            adb install smoke-apk/app/build/outputs/apk/debug/app-debug.apk
+            python3 tools/smoke_test.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: emulator-smoke-${{ github.sha }}
+          path: smoke-evidence/
+          if-no-files-found: warn
